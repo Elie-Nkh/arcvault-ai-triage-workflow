@@ -1,0 +1,204 @@
+{
+  "name": "ArcVault Intake Triage Pipeline",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "333f6d34-29c1-4a68-89d5-2406e886607b",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputs = [\n  {\n    message_id: \"REQ-001\",\n    source: \"Email\",\n    raw_message: \"Hi, I tried logging in this morning and keep getting a 403 error. My account is arcvault.io/user/jsmith. This started after your update last Tuesday.\"\n  },\n  {\n    message_id: \"REQ-002\",\n    source: \"Web Form\",\n    raw_message: \"We'd love to see a bulk export feature for our audit logs. We're a compliance-heavy org and this would save us hours every month.\"\n  },\n  {\n    message_id: \"REQ-003\",\n    source: \"Support Portal\",\n    raw_message: \"Invoice #8821 shows a charge of $1,240 but our contract rate is $980/month. Can someone look into this?\"\n  },\n  {\n    message_id: \"REQ-004\",\n    source: \"Email\",\n    raw_message: \"I'm not sure if this is the right place to ask, but is there a way to set up SSO with Okta? We're evaluating switching our auth provider.\"\n  },\n  {\n    message_id: \"REQ-005\",\n    source: \"Web Form\",\n    raw_message: \"Your dashboard stopped loading for us around 2pm EST. Checked our end — it's definitely on yours. Multiple users affected.\"\n  }\n];\n\nreturn inputs.map(item => ({ json: item }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "20f612b9-fa4c-4906-8884-a32cbcbb7dd8",
+      "name": "Sample Inputs"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-20250514\",\n  \"max_tokens\": 1024,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"You are an AI triage agent for ArcVault, a B2B software company. Analyze the following customer message and return a JSON object.\\n\\nMessage source: {{ $json.source }}\\nMessage: {{ $json.raw_message }}\\n\\nClassify and extract the following:\\n\\n1. category: exactly one of: Bug Report, Feature Request, Billing Issue, Technical Question, Incident/Outage\\n2. priority: exactly one of: Low, Medium, High\\n3. confidence_score: integer 0-100 representing how confident you are in the category classification\\n4. issue_summary: one sentence describing the core issue\\n5. identifiers: array of objects with \\\"type\\\" and \\\"value\\\" for any account IDs, invoice numbers, error codes, URLs, or other identifiers mentioned. If none found, return empty array.\\n6. urgency_signal: exactly one of: Low, Medium, High — based on language urgency, user impact, and business impact in the message\\n7. summary: a 2-3 sentence human-readable summary suitable for the receiving team\\n\\nRespond with ONLY valid JSON, no markdown, no explanation. Use this exact structure:\\n{\\n  \\\"category\\\": \\\"\\\",\\n  \\\"priority\\\": \\\"\\\",\\n  \\\"confidence_score\\\": 0,\\n  \\\"issue_summary\\\": \\\"\\\",\\n  \\\"identifiers\\\": [{\\\"type\\\": \\\"\\\", \\\"value\\\": \\\"\\\"}],\\n  \\\"urgency_signal\\\": \\\"\\\",\\n  \\\"summary\\\": \\\"\\\"\\n}\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "de23c7fb-32c1-4b60-ae23-3699a4bcac48",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "LdD7Qi9OOa1iDC8T",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const inputData = $('Sample Inputs').item.json;\nconst response = $input.item.json;\n\n// Extract text from Claude's response\nlet text = response.content[0].text;\n\n// Clean up in case Claude wraps JSON in markdown fences\ntext = text.replace(/```json\\s*/g, '').replace(/```\\s*/g, '').trim();\n\n// Parse the JSON from Claude\nconst parsed = JSON.parse(text);\n\n// Build the final record using our schema\nconst record = {\n  message_id: inputData.message_id,\n  source: inputData.source,\n  raw_message: inputData.raw_message,\n  classification: {\n    category: parsed.category,\n    priority: parsed.priority,\n    confidence_score: parsed.confidence_score\n  },\n  enrichment: {\n    issue_summary: parsed.issue_summary,\n    identifiers: parsed.identifiers || [],\n    urgency_signal: parsed.urgency_signal\n  },\n  routing: {\n    destination_queue: \"\",\n    escalation: {\n      flagged: false,\n      reasons: []\n    }\n  },\n  summary: parsed.summary,\n  processed_at: new Date().toISOString()\n};\n\nreturn { json: record };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "25dcd4fe-325c-40aa-a334-c41d52c891eb",
+      "name": "Parse Response"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const record = { ...$input.item.json };\n\n// Map categories to destination queues\nconst routingMap = {\n  \"Bug Report\": \"Engineering\",\n  \"Feature Request\": \"Product\",\n  \"Billing Issue\": \"Billing\",\n  \"Technical Question\": \"IT/Security\",\n  \"Incident/Outage\": \"Engineering\"\n};\n\nconst category = record.classification.category;\nrecord.routing.destination_queue = routingMap[category] || \"General Support\";\n\nreturn { json: record };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        832,
+        0
+      ],
+      "id": "a538d512-417c-479d-99f2-913a665cab54",
+      "name": "Routing Logic"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const record = { ...$input.item.json };\nconst reasons = [];\n\n// Rule 1: Low confidence\nif (record.classification.confidence_score < 70) {\n  reasons.push(\"Confidence score below 70%\");\n}\n\n// Rule 2: Outage/downtime keywords\nconst msg = record.raw_message.toLowerCase();\nconst outageKeywords = [\"outage\", \"down for all\", \"multiple users affected\", \"stopped loading\", \"stopped working\"];\nfor (const keyword of outageKeywords) {\n  if (msg.includes(keyword)) {\n    reasons.push(`Outage keyword detected: \"${keyword}\"`);\n    break;\n  }\n}\n\n// Rule 3: Billing discrepancy over $500\nconst billingMatch = msg.match(/\\$[\\d,]+/g);\nif (billingMatch && record.classification.category === \"Billing Issue\") {\n  const amounts = billingMatch.map(a => parseFloat(a.replace(/[$,]/g, '')));\n  if (amounts.length >= 2) {\n    const diff = Math.abs(amounts[0] - amounts[1]);\n    if (diff > 500) {\n      reasons.push(`Billing discrepancy of $${diff} exceeds $500 threshold`);\n    }\n  }\n}\n\n// Apply escalation\nif (reasons.length > 0) {\n  record.routing.escalation.flagged = true;\n  record.routing.escalation.reasons = reasons;\n  record.routing.destination_queue = \"Escalation\";\n}\n\nreturn { json: record };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "3cfb697d-5aa2-49c5-ad67-108757df385b",
+      "name": "Escalation Check"
+    },
+    {
+      "parameters": {
+        "jsCode": "const allRecords = $input.all().map(item => item.json);\n\nconst output = {\n  pipeline: \"ArcVault Intake Triage\",\n  generated_at: new Date().toISOString(),\n  total_records: allRecords.length,\n  escalated_count: allRecords.filter(r => r.routing.escalation.flagged).length,\n  records: allRecords\n};\n\nreturn [{ json: output }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        0
+      ],
+      "id": "e9071e17-2592-440d-9e47-ed1219cca348",
+      "name": "Write Output"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Sample Inputs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sample Inputs": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Parse Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Response": {
+      "main": [
+        [
+          {
+            "node": "Routing Logic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Routing Logic": {
+      "main": [
+        [
+          {
+            "node": "Escalation Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Escalation Check": {
+      "main": [
+        [
+          {
+            "node": "Write Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "7166397f-a1f5-4b7c-985b-4a98bfd18084",
+  "meta": {
+    "instanceId": "a8ec7407832b6b24cd5c4546f456a28218eae0261dad44e176bf4f2f24fb65a4"
+  },
+  "id": "crmF2wgf7NS3Mlze",
+  "tags": []
+}
