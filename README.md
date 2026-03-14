@@ -9,7 +9,7 @@ Processes unstructured customer requests (bug reports, feature requests, billing
 
 The prompt engineering and workflow design process can be viewed here:
 
-[https://claude.ai/share/your-link-here](https://claude.ai/share/ad6f629f-640f-43a6-9bbb-cc33f95ccc69)
+[https://claude.ai/share/my-claude-conv-link](https://claude.ai/share/ad6f629f-640f-43a6-9bbb-cc33f95ccc69)
 
 This conversation shows the iterative reasoning behind the workflow architecture, prompt structure, and routing logic.
 
