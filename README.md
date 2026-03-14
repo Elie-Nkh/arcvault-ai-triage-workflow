@@ -5,6 +5,13 @@ An AI-powered intake and triage workflow built with **n8n** and **Claude (Sonnet
 ## What It Does
 
 Processes unstructured customer requests (bug reports, feature requests, billing issues, etc.) and automatically classifies, enriches, routes, and escalates them — producing structured JSON records ready for downstream teams.
+### Development Conversation (Claude)
+
+The prompt engineering and workflow design process can be viewed here:
+
+[https://claude.ai/share/your-link-here](https://claude.ai/share/ad6f629f-640f-43a6-9bbb-cc33f95ccc69)
+
+This conversation shows the iterative reasoning behind the workflow architecture, prompt structure, and routing logic.
 
 ## Workflow Overview
 
