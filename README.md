@@ -4,7 +4,7 @@ An AI-powered intake and triage workflow built with **n8n** and **Claude (Sonnet
 
 ## What It Does
 
-Processes unstructured customer requests (bug reports, feature requests, billing issues, etc.) and automatically classifies, enriches, routes, and escalates them — producing structured JSON records ready for downstream teams.
+Processes unstructured customer requests (bug reports, feature requests, billing issues, etc.) and automatically classifies, enriches, routes, and escalates them, producing structured JSON records ready for downstream teams.
 ### Development Conversation (Claude)
 
 The prompt engineering and workflow design process can be viewed here:
